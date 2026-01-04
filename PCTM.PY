@@ -1,112 +1,371 @@
-# server.py
-import os
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
-from threading import Lock
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFC Presence System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-DATA_FILE = 'users.txt'  # UID:stato => 04A2BB01:0
-                         #                       ^ 0 = Assente
-                         #                         1 = Presente
-LOCK = Lock()
-app = Flask(__name__, static_folder='.')
-CORS(app)
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
 
-def normalize_UID(UID: str) -> str:
-    return UID.replace(':','').replace('-','').upper() if UID else UID
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
 
-# ######################## #
-#      __                  #
-#     |__)_ _  _| /\ ||    #
-#     | \(-(_|(_|/--\||    #
-#                          #
-# ######################## #
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+            font-size: 28px;
+        }
 
-def read_all():
-    # Crea il file se non esiste
-    if not os.path.exists(DATA_FILE):
-        return {}
-    d = {}
-    with open(DATA_FILE, 'r', encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line or ':' not in line: 
-                continue
-            UID, st = line.split(':', 1)
-            d[UID.strip().upper()] = st.strip()
-    return d
+        .status-circle {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            margin: 30px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            font-weight: bold;
+            color: white;
+            transition: all 0.5s ease;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
 
-# ------------------------------------------------------------------------
-def update(UID, new_state):
+        .status-circle.waiting {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
 
-# Crea il file se non esiste
-    if not os.path.exists(DATA_FILE):
-        with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            f.write(f'{UID}:{new_state}\n')
-        return
-    
-    # Leggi tutte le righe
-    with open(DATA_FILE, 'r', encoding='utf-8') as f:
-        lines = f.readlines()
-    
-    # Cerca e aggiorna la riga specifica
-    found = False
-    for i, line in enumerate(lines):
-        if ':' in line:
-            file_UID = line.split(':', 1)[0].strip().upper()
-            if file_UID == UID:
-                lines[i] = f'{UID}:{new_state}\n'
-                found = True
-                break
-    
-    # Se non trovato, aggiungi in fondo
-    if not found:
-        lines.append(f'{UID}:{new_state}\n')
-    
-    # Riscrivi il file
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        f.writelines(lines)
+        .status-circle.green {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            animation: pulse 1.5s ease-in-out;
+        }
 
-# ------------------------------------------------------------------------
-@app.route('/nfc', methods=['POST'])
-def nfc():
-    
-    payload = request.get_json(silent=True)
-    # Errori
-    if not payload:
-        return jsonify({'error': 'E! Json'}), 400
-    raw_UID = payload.get('UID')
-    if not raw_UID:
-        return jsonify({'error': 'E! No UID'}), 400
-    UID = normalize_UID(raw_UID)
-    if not UID:
-        return jsonify({'error': 'E! UID'}), 400
+        .status-circle.red {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+            animation: pulse 1.5s ease-in-out;
+        }
 
-#   Bussa il file
-    try:
-        with LOCK:
-            data = read_all()
-            
-#           Alterna stato
-            if cur is None:
-                new_state = '1'
-            else:
-                new_state = '0' if cur == '1' else '1'
-            
-#           Aggiorna solo la riga specifica
-            update(UID, new_state)
-            
-#           Legge Dopo
-            confirmed = read_all().get(UID)
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        #startBtn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        #startBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        #startBtn:active {
+            transform: translateY(0);
+        }
+
+        #startBtn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .info strong {
+            color: #333;
+        }
+
+        .log {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            font-size: 13px;
+            color: #666;
+            text-align: left;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .error {
+            color: #f45c43;
+            font-weight: bold;
+        }
+
+        .success {
+            color: #38ef7d;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Sistema Presenze NFC</h1>
         
-#       Restituisce json { UID + PRIMA + DOPO } 
-        return jsonify({'UID': UID, 'DOPO': confirmed}), 200
-    except Exception as e:
-        return jsonify({'error': 'E! Server', 'detail': str(e)}), 500
+        <div id="statusCircle" class="status-circle waiting">
+            Avvicina il badge
+        </div>
 
-# ------------------------------------------------------------------------
-@app.route('/')
-def root():
-    return send_from_directory('.', 'index.html')
+        <button id="startBtn">Avvia Lettura NFC</button>
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+        <div class="info">
+            <strong>UID:</strong> <span id="uidDisplay">-</span><br>
+            <strong>Stato precedente:</strong> <span id="beforeState">-</span><br>
+            <strong>Stato nuovo:</strong> <span id="afterState">-</span>
+        </div>
+
+        <div class="log" id="logArea"></div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'http://localhost:5000/nfc'; // Modifica con l'IP del tuo server
+        const RELOAD_DELAY = 3000; // Millisecondi prima del reload in caso di errore critico
+        
+        const statusCircle = document.getElementById('statusCircle');
+        const startBtn = document.getElementById('startBtn');
+        const uidDisplay = document.getElementById('uidDisplay');
+        const beforeState = document.getElementById('beforeState');
+        const afterState = document.getElementById('afterState');
+        const logArea = document.getElementById('logArea');
+
+        let isProcessing = false;
+        let ndefReader = null;
+
+        // Gestione errori globale
+        window.addEventListener('error', (event) => {
+            log(`⚠️ Errore critico: ${event.message}`, 'error');
+            handleCriticalError('Errore JavaScript non gestito');
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            log(`⚠️ Promise rifiutata: ${event.reason}`, 'error');
+            handleCriticalError('Errore Promise non gestito');
+        });
+
+        function handleCriticalError(message) {
+            log(`🔄 Ricarico la pagina in ${RELOAD_DELAY/1000} secondi...`, 'error');
+            statusCircle.textContent = 'ERRORE - Riavvio...';
+            statusCircle.className = 'status-circle red';
+            
+            setTimeout(() => {
+                location.reload();
+            }, RELOAD_DELAY);
+        }
+
+        function log(message, type = 'info') {
+            try {
+                const entry = document.createElement('div');
+                entry.className = `log-entry ${type}`;
+                const timestamp = new Date().toLocaleTimeString('it-IT');
+                entry.textContent = `[${timestamp}] ${message}`;
+                logArea.insertBefore(entry, logArea.firstChild);
+                
+                // Mantieni solo gli ultimi 10 log
+                while (logArea.children.length > 10) {
+                    logArea.removeChild(logArea.lastChild);
+                }
+            } catch (err) {
+                console.error('Errore nel logging:', err);
+            }
+        }
+
+        function updateDisplay(state) {
+            statusCircle.className = 'status-circle';
+            
+            if (state === '0') {
+                statusCircle.classList.add('red');
+                statusCircle.textContent = 'ASSENTE';
+            } else if (state === '1') {
+                statusCircle.classList.add('green');
+                statusCircle.textContent = 'PRESENTE';
+            } else {
+                statusCircle.classList.add('waiting');
+                statusCircle.textContent = 'Avvicina il badge';
+            }
+        }
+
+        async function readNDEF(tag) {
+            try {
+                const ndef = new NDEFReader();
+                await ndef.scan();
+                
+                // Leggi i record NDEF
+                const records = tag.message?.records || [];
+                let currentState = null;
+                
+                for (const record of records) {
+                    if (record.recordType === "text") {
+                        const textDecoder = new TextDecoder(record.encoding || "utf-8");
+                        const text = textDecoder.decode(record.data);
+                        // Cerca uno stato (0 o 1)
+                        if (text === '0' || text === '1') {
+                            currentState = text;
+                            break;
+                        }
+                    }
+                }
+                
+                return currentState;
+            } catch (err) {
+                log(`Errore lettura NDEF: ${err.message}`, 'error');
+                return null;
+            }
+        }
+
+        async function writeNDEF(newState) {
+            try {
+                const ndef = new NDEFReader();
+                await ndef.write({
+                    records: [{
+                        recordType: "text",
+                        data: newState
+                    }]
+                });
+                log(`✓ Scritto nuovo stato: ${newState}`, 'success');
+                return true;
+            } catch (err) {
+                log(`✗ Errore scrittura NDEF: ${err.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function handleNFCTag(event) {
+            try {
+                const tag = event;
+                const uid = tag.serialNumber;
+                
+                log(`Tag rilevato: ${uid}`);
+                uidDisplay.textContent = uid;
+
+                // 1. Leggi stato corrente dal tag NDEF
+                const tagState = await readNDEF(tag);
+                log(`Stato letto dal tag: ${tagState || 'non trovato'}`);
+                beforeState.textContent = tagState || 'N/A';
+
+                // 2. Invia UID al server
+                log('Contatto il server...');
+                const response = await fetch(SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ UID: uid })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Errore server: ${response.status}`);
+                }
+
+                const data = await response.json();
+                log(`Server risponde - PRIMA: ${data.PRIMA}, DOPO: ${data.DOPO}`, 'success');
+                
+                afterState.textContent = data.DOPO || 'N/A';
+
+                // 3. Verifica se lo stato è cambiato
+                if (tagState !== data.DOPO) {
+                    log(`Aggiornamento necessario: ${tagState} → ${data.DOPO}`);
+                    // 4. Scrivi nuovo stato sul tag
+                    await writeNDEF(data.DOPO);
+                } else {
+                    log('Stato già sincronizzato, nessun aggiornamento necessario');
+                }
+
+                // 5. Mostra il risultato visivo
+                updateDisplay(data.DOPO);
+
+            } catch (err) {
+                log(`Errore: ${err.message}`, 'error');
+                statusCircle.textContent = 'ERRORE';
+                statusCircle.className = 'status-circle waiting';
+            }
+
+            // Reset dopo 3 secondi
+            setTimeout(() => {
+                updateDisplay(null);
+                uidDisplay.textContent = '-';
+                beforeState.textContent = '-';
+                afterState.textContent = '-';
+            }, 3000);
+        }
+
+        startBtn.addEventListener('click', async () => {
+            if (!('NDEFReader' in window)) {
+                alert('NFC non supportato su questo dispositivo o browser. Usa Chrome su Android.');
+                log('NFC non supportato', 'error');
+                return;
+            }
+
+            try {
+                startBtn.disabled = true;
+                startBtn.textContent = 'Lettura attiva...';
+                log('Sistema NFC attivato', 'success');
+
+                const ndef = new NDEFReader();
+                await ndef.scan();
+
+                log('In attesa di tag NFC...', 'info');
+
+                ndef.addEventListener("reading", handleNFCTag);
+                ndef.addEventListener("readingerror", () => {
+                    log('Errore durante la lettura del tag', 'error');
+                });
+
+            } catch (err) {
+                log(`Errore attivazione NFC: ${err.message}`, 'error');
+                alert(`Errore: ${err.message}`);
+                startBtn.disabled = false;
+                startBtn.textContent = 'Avvia Lettura NFC';
+            }
+        });
+
+        // Log iniziale
+        log('App pronta. Premi il pulsante per iniziare.');
+    </script>
+</body>
+</html>
