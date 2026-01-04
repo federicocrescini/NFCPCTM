@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NFC Presence System</title>
+<style>
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+    
+    
+
+    body {
+        background: #131313; /* quasi nero/blu scuro per contrasto */
+        color: #6aff00; /* verde chiaro testo */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Card retro: bordo sottile e effetto CRT */
+    .container {
+        background: #021006; /* verde molto scuro/nero tendente al verde */
+        border-radius: 8px;
+        padding: 28px;
+        box-shadow:
+            0 0 0 2px rgba(0, 100, 0, 0.15) inset, /* bordo interno verde tenue */
+            0 30px 60px rgba(0, 0, 0, 0.6); /* ombra esterna profonda */
+        max-width: 560px;
+        width: 100%;
+        text-align: center;
+        border: 2px solid rgba(0, 80, 0, 0.25);
+    }
+
+    h1 {
+        color: #b7f58b;
+        margin-bottom: 22px;
+        font-size: 22px;
+        letter-spacing: 1px;
+        text-shadow: 0 1px 0 rgba(0, 30, 0, 0.6);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    /* Schermo LCD: bordo, scanlines e font stile terminale grande */
+    .status-circle {
+        width: 220px;
+        height: 120px; /* schermo rettangolare stile LCD */
+        border-radius: 6px;
+        margin: 18px auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 20px;
+        font-weight: 700;
+        color: #021006;
+        background: linear-gradient(180deg, #c3ff9a 0%, #98f06a 60%); /* verde acceso per testo scuro */
+        box-shadow:
+            0 6px 18px rgba(0, 0, 0, 0.7),
+            0 0 40px rgba(120, 255, 120, 0.06) inset;
+        position: relative;
+        overflow: hidden;
+        border: 2px solid rgba(140, 255, 140, 0.15);
+        letter-spacing: 2px;
+    }
+
+    /* scanlines effect */
+    .status-circle::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(rgba(0,0,0,0.06) 50%, rgba(255,255,255,0.02) 51%);
+        background-size: 100% 4px;
+        pointer-events: none;
+        mix-blend-mode: multiply;
+    }
+
+    /* varianti: OFF/ASSENTE simula LCD spento/rosso scuro */
+    .status-circle.waiting {
+        background: linear-gradient(180deg, #01321a 0%, #021006 60%);
+        color: #7ef08a;
+        text-shadow: 0 1px 0 rgba(0,0,0,0.8);
+    }
+
+    .status-circle.green {
+        background: linear-gradient(180deg, #c3ff9a 0%, #98f06a 60%);
+        color: #021006;
+        animation: crt-flicker 3s infinite;
+    }
+
+    .status-circle.red {
+        background: linear-gradient(180deg, #ffb2a2 0%, #ff7a6a 60%);
+        color: #210600;
+        animation: crt-flicker 3s infinite;
+    }
+
+    @keyframes crt-flicker {
+        0% { opacity: 0.95; transform: translateY(0); }
+        3% { opacity: 0.8; transform: translateY(-1px); }
+        6% { opacity: 1; transform: translateY(0); }
+        100% { opacity: 0.98; }
+    }
+
+    /* Pulsante stile retrò: border, glow e effetto pressed fisico */
+    #startBtn {
+        background: linear-gradient(180deg, #0b3a16 0%, #06300f 100%);
+        color: #b7f58b;
+        border: 2px solid rgba(80, 200, 100, 0.12);
+        padding: 12px 36px;
+        font-size: 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: transform 0.08s linear, box-shadow 0.08s linear;
+        box-shadow: 0 6px 0 rgba(0, 0, 0, 0.6), 0 0 18px rgba(100, 255, 120, 0.06);
+        letter-spacing: 1px;
+    }
+
+    #startBtn:hover {
+        box-shadow: 0 8px 0 rgba(0,0,0,0.6), 0 0 26px rgba(100,255,120,0.09);
+        transform: translateY(-2px);
+    }
+
+    #startBtn:active {
+        transform: translateY(2px);
+        box-shadow: 0 4px 0 rgba(0,0,0,0.6);
+    }
+
+    #startBtn:disabled {
+        background: linear-gradient(180deg, #041b0a 0%, #021006 100%);
+        color: rgba(183, 245, 139, 0.5);
+        cursor: not-allowed;
+        box-shadow: none;
+        border-color: rgba(80, 200, 100, 0.06);
+    }
+
+    /* Info/Log boxes: bordo neon tenue e testo monospazio */
+    .info {
+        margin-top: 18px;
+        padding: 12px;
+        background: rgba(0, 30, 10, 0.6);
+        border-radius: 6px;
+        font-size: 13px;
+        color: #b7f58b;
+        display: inline-block;
+        text-align: left;
+        border: 1px solid rgba(80, 200, 100, 0.06);
+        width: calc(100% - 40px);
+    }
+
+    .info strong {
+        color: #e9ffcf;
+    }
+
+    .log {
+        margin-top: 14px;
+        padding: 10px;
+        background: rgba(0, 30, 10, 0.45);
+        border-radius: 6px;
+        font-size: 13px;
+        color: #b7f58b;
+        text-align: left;
+        max-height: 160px;
+        overflow-y: auto;
+        border: 1px solid rgba(80, 200, 100, 0.04);
+        width: calc(100% - 40px);
+    }
+
+    .log-entry {
+        padding: 6px 0;
+        border-bottom: 1px dashed rgba(80, 200, 100, 0.04);
+    }
+
+    .log-entry:last-child {
+        border-bottom: none;
+    }
+
+    .error {
+        color: #ffb2a2;
+        font-weight: 700;
+    }
+
+    .success {
+        color: #b7f58b;
+        font-weight: 700;
+    }
+
+    /* piccolo display per UID/stati con effetto LCD text */
+    #uidDisplay, #beforeState, #afterState {
+        color: #dff7c7;
+        font-weight: 700;
+        letter-spacing: 1px;
+    }
+
+    /* responsive: schermi piccoli */
+    @media (max-width: 420px) {
+        .status-circle {
+            width: 100%;
+            height: 100px;
+            font-size: 16px;
+        }
+        .container {
+            padding: 18px;
+        }
+        #startBtn {
+            width: 100%;
+            padding: 12px 0;
+        }
+    }
+</style>
+</head>
+<body>
+    <div class="container">
+        <h1>NFC</h1>
+        
+        <div id="statusCircle" class="status-circle waiting">
+            Avvicina il badge
+        </div>
+
+        <button id="startBtn">Avvia Lettura NFC</button>
+
+        <div class="info">
+            <strong>UID:</strong> <span id="uidDisplay">-</span><br>
+            <strong>Stato precedente:</strong> <span id="beforeState">-</span><br>
+            <strong>Stato nuovo:</strong> <span id="afterState">-</span>
+        </div>
+
+        <div class="log" id="logArea"></div>
+    </div>
+
+    <script>
+        const SERVER_URL = 'http://192.168.178.100:5000/nfc'; // Modifica con l'IP del tuo server
+        
+        const statusCircle = document.getElementById('statusCircle');
+        const startBtn = document.getElementById('startBtn');
+        const uidDisplay = document.getElementById('uidDisplay');
+        const beforeState = document.getElementById('beforeState');
+        const afterState = document.getElementById('afterState');
+        const logArea = document.getElementById('logArea');
+
+        function log(message, type = 'info') {
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            const timestamp = new Date().toLocaleTimeString('it-IT');
+            entry.textContent = `[${timestamp}] ${message}`;
+            logArea.insertBefore(entry, logArea.firstChild);
+            
+            // Mantieni solo gli ultimi 10 log
+            while (logArea.children.length > 10) {
+                logArea.removeChild(logArea.lastChild);
+            }
+        }
+
+        function updateDisplay(state) {
+            statusCircle.className = 'status-circle';
+            
+            if (state === '0') {
+                statusCircle.classList.add('red');
+                statusCircle.textContent = 'ASSENTE';
+            } else if (state === '1') {
+                statusCircle.classList.add('green');
+                statusCircle.textContent = 'PRESENTE';
+            } else {
+                statusCircle.classList.add('waiting');
+                statusCircle.textContent = 'Avvicina il badge';
+            }
+        }
+
+        async function readNDEF(tag) {
+            try {
+                const ndef = new NDEFReader();
+                await ndef.scan();
+                
+                // Leggi i record NDEF
+                const records = tag.message?.records || [];
+                let currentState = null;
+                
+                for (const record of records) {
+                    if (record.recordType === "text") {
+                        const textDecoder = new TextDecoder(record.encoding || "utf-8");
+                        const text = textDecoder.decode(record.data);
+                        // Cerca uno stato (0 o 1)
+                        if (text === '0' || text === '1') {
+                            currentState = text;
+                            break;
+                        }
+                    }
+                }
+                
+                return currentState;
+            } catch (err) {
+                log(`Errore lettura NDEF: ${err.message}`, 'error');
+                return null;
+            }
+        }
+
+        async function writeNDEF(newState) {
+            try {
+                const ndef = new NDEFReader();
+                await ndef.write({
+                    records: [{
+                        recordType: "text",
+                        data: newState
+                    }]
+                });
+                log(`✓ Scritto nuovo stato: ${newState}`, 'success');
+                return true;
+            } catch (err) {
+                log(`✗ Errore scrittura NDEF: ${err.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function handleNFCTag(event) {
+            try {
+                const tag = event;
+                const uid = tag.serialNumber;
+                
+                log(`Tag rilevato: ${uid}`);
+                uidDisplay.textContent = uid;
+
+                // 1. Leggi stato corrente dal tag NDEF
+                const tagState = await readNDEF(tag);
+                log(`Stato letto dal tag: ${tagState || 'non trovato'}`);
+                beforeState.textContent = tagState || 'N/A';
+
+                // 2. Invia UID al server
+                log('Contatto il server...');
+                const response = await fetch(SERVER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ UID: uid })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Errore server: ${response.status}`);
+                }
+
+                const data = await response.json();
+                log(`Server risponde - PRIMA: ${data.PRIMA}, DOPO: ${data.DOPO}`, 'success');
+                
+                afterState.textContent = data.DOPO || 'N/A';
+
+                // 3. Verifica se lo stato è cambiato
+                if (tagState !== data.DOPO) {
+                    log(`Aggiornamento necessario: ${tagState} → ${data.DOPO}`);
+                    // 4. Scrivi nuovo stato sul tag
+                    await writeNDEF(data.DOPO);
+                } else {
+                    log('Stato già sincronizzato, nessun aggiornamento necessario');
+                }
+
+                // 5. Mostra il risultato visivo
+                updateDisplay(data.DOPO);
+
+            } catch (err) {
+                log(`Errore: ${err.message}`, 'error');
+                statusCircle.textContent = 'ERRORE';
+                statusCircle.className = 'status-circle waiting';
+            }
+
+            // Reset dopo 3 secondi
+            setTimeout(() => {
+                updateDisplay(null);
+                uidDisplay.textContent = '-';
+                beforeState.textContent = '-';
+                afterState.textContent = '-';
+            }, 3000);
+        }
+
+        startBtn.addEventListener('click', async () => {
+            if (!('NDEFReader' in window)) {
+                alert('NFC non supportato su questo dispositivo o browser. Usa Chrome su Android.');
+                log('NFC non supportato', 'error');
+                return;
+            }
+
+            try {
+                startBtn.disabled = true;
+                startBtn.textContent = 'Lettura attiva...';
+                log('Sistema NFC attivato', 'success');
+
+                const ndef = new NDEFReader();
+                await ndef.scan();
+
+                log('In attesa di tag NFC...', 'info');
+
+                ndef.addEventListener("reading", handleNFCTag);
+                ndef.addEventListener("readingerror", () => {
+                    log('Errore durante la lettura del tag', 'error');
+                });
+
+            } catch (err) {
+                log(`Errore attivazione NFC: ${err.message}`, 'error');
+                alert(`Errore: ${err.message}`);
+                startBtn.disabled = false;
+                startBtn.textContent = 'Avvia Lettura NFC';
+            }
+        });
+
+        // Log iniziale
+        log('App pronta. Premi il pulsante per iniziare.');
+    </script>
+</body>
+</html>
